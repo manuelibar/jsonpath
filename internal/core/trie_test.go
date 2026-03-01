@@ -1,9 +1,9 @@
-package jsonpath
+package core
 
 import (
 	"testing"
 
-	"github.com/mibar/jsonpath/parser"
+	"github.com/mibar/jsonpath/internal/parser"
 )
 
 func TestTrieSinglePath(t *testing.T) {

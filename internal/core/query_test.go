@@ -1,4 +1,4 @@
-package jsonpath
+package core
 
 import (
 	"errors"
@@ -29,10 +29,8 @@ func TestCompileErrors(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	// Should contain 2 errors joined
 	var pe *ParseError
 	unwrapped := errors.Unwrap(err)
-	// errors.Join wraps, so we check for ParseError in the chain
 	if !errors.As(err, &pe) {
 		t.Errorf("expected ParseError in chain, got %T: %v", unwrapped, err)
 	}
@@ -73,7 +71,6 @@ func TestMaxPathCountEnforced(t *testing.T) {
 }
 
 func TestMaxPathCountDefaultEnforced(t *testing.T) {
-	// A query with no explicit limits uses MaxPathCount by default.
 	paths := make([]string, MaxPathCount+1)
 	for i := range paths {
 		paths[i] = "$.name"
@@ -86,7 +83,6 @@ func TestMaxPathCountDefaultEnforced(t *testing.T) {
 }
 
 func TestMaxPathCountUnrestrictedWithNoLimits(t *testing.T) {
-	// NoLimits explicitly disables the path count check.
 	paths := make([]string, MaxPathCount+1)
 	for i := range paths {
 		paths[i] = "$.name"

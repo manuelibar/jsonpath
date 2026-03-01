@@ -1,10 +1,10 @@
-package jsonpath
+package core
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mibar/jsonpath/parser"
+	"github.com/mibar/jsonpath/internal/parser"
 )
 
 func mustParse(t *testing.T, paths ...string) *trieNode {
@@ -280,14 +280,13 @@ func TestWalkDepthLimit(t *testing.T) {
 }
 
 func TestWalkNoDepthLimitWithZeroMaxDepth(t *testing.T) {
-	// A walker with maxDepth=0 imposes no depth limit.
 	inner := map[string]any{"leaf": true}
 	for i := 0; i < MaxDepth+10; i++ {
 		inner = map[string]any{"nested": inner}
 	}
 
 	trie := mustParse(t, "$..leaf")
-	w := walker{include: true, maxDepth: 0} // 0 = explicitly unrestricted
+	w := walker{include: true, maxDepth: 0}
 	result, err := w.walk(inner, trie, 0)
 	if err != nil {
 		t.Fatalf("unexpected error with unrestricted depth: %v", err)
@@ -297,10 +296,6 @@ func TestWalkNoDepthLimitWithZeroMaxDepth(t *testing.T) {
 	}
 }
 
-// TestWalkIncludeDescendantWithDirectMatch verifies that ε-closure propagation
-// is NOT dropped when a direct match also exists. This was a bug where
-// the condition `&& merged == nil` prevented ε-closure search when a key
-// already had a direct trie match.
 func TestWalkIncludeDescendantWithDirectMatch(t *testing.T) {
 	tree := unmarshal(t, `{"a":{"x":1,"name":"A","b":{"name":"B"}}}`)
 	trie := mustParse(t, "$.a.x", "$..name")
@@ -323,8 +318,6 @@ func TestWalkIncludeDescendantWithDirectMatch(t *testing.T) {
 	}
 }
 
-// TestWalkExcludeDescendantWithDirectMatch verifies that ε-closure exclusion
-// is applied even when a direct match also exists for a key.
 func TestWalkExcludeDescendantWithDirectMatch(t *testing.T) {
 	tree := unmarshal(t, `{"a":{"x":1,"secret":"hidden","b":{"secret":"also_hidden","name":"B"}}}`)
 	trie := mustParse(t, "$.a.x", "$..secret")

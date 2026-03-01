@@ -1,14 +1,12 @@
-package jsonpath
+package core
 
 import (
 	"encoding/json"
 	"fmt"
 	"testing"
 
-	"github.com/mibar/jsonpath/parser"
+	"github.com/mibar/jsonpath/internal/parser"
 )
-
-// --- Helpers ---
 
 func mustCompileQuery(mode Mode, paths ...string) Query {
 	var q Query
@@ -32,8 +30,6 @@ func mustUnmarshal(data []byte) any {
 	}
 	return v
 }
-
-// --- Test Data ---
 
 func flatObject(n int) []byte {
 	m := make(map[string]any, n)
@@ -86,8 +82,6 @@ func deeplyNested(depth int) []byte {
 	b, _ := json.Marshal(inner)
 	return b
 }
-
-// --- End-to-End Benchmarks (compile + walk) ---
 
 func BenchmarkShakeIncludeFlat(b *testing.B) {
 	data := flatObject(20)
@@ -173,8 +167,6 @@ func BenchmarkShakePrecompiled(b *testing.B) {
 	}
 }
 
-// --- Isolated Benchmarks ---
-
 func BenchmarkCompile(b *testing.B) {
 	paths := []string{"$.user.name", "$.user.orders[*].items[0].price", "$..id", "$.meta.version"}
 
@@ -202,15 +194,11 @@ func BenchmarkTrieMatch(b *testing.B) {
 }
 
 func BenchmarkTrieMatchPremerged(b *testing.B) {
-	// Same setup as BenchmarkTrieMatch but explicitly exercises the pre-merged path.
-	// After finalize(), match() on a node with both names and wildcard should do
-	// a single map lookup with zero allocations.
 	p1, _ := parser.ParsePath("$.user.name")
 	p2, _ := parser.ParsePath("$.user.email")
 	p3, _ := parser.ParsePath("$.*")
 	trie := buildTrie([]*parser.Path{p1, p2, p3})
 
-	// Verify pre-merge was applied.
 	if trie.namesMerged == nil {
 		b.Fatal("expected namesMerged to be populated after finalize()")
 	}

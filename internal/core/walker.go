@@ -1,60 +1,9 @@
-package jsonpath
-
-// walker.go implements a trie-guided tree walker for JSON tree pruning.
-//
-// # How It Works
-//
-// The walker traverses a JSON tree (from encoding/json.Unmarshal) and the
-// compiled trie simultaneously — in lockstep. "Lockstep" means that for
-// every step down into the JSON tree (entering an object value or array
-// element), the walker also steps down into the trie (following the
-// matching transition). The trie acts as a guide: it tells the walker
-// which branches of the JSON tree to keep, skip, or recurse into.
-//
-// At each JSON node, the walker queries the trie:
-//   - If the trie node is nil → no path reaches here (include: skip, exclude: keep).
-//   - If the trie node is accepting → a full path ends here (include: keep subtree, exclude: remove subtree).
-//   - Otherwise → recurse deeper into both the JSON tree and the trie.
-//
-// # NFA Simulation at Walk Time
-//
-// When the trie has an ε-transition (from the ".." operator), the walker
-// simulates an NFA: at each JSON node, it is effectively in *two states*
-// simultaneously — the direct trie state and the ε-transition state.
-// Both are tested against each key, and results are merged.
-//
-// The ε-transition state is *propagated* to every descendant — this is
-// the ε-closure. Unlike direct transitions that are consumed (one key =
-// one step), the ε-transition persists across depths, which is what makes
-// "$..name" match "name" at ANY nesting level.
-//
-// # Include vs Exclude
-//
-// Behavior is selected by a single `include` bool set at construction:
-//   - Include mode: builds a new tree containing only matched subtrees.
-//     Uses [walkSearchEpsilon] for ε-closure (finds and collects matches).
-//   - Exclude mode: clones the tree, omitting matched subtrees.
-//     Uses [walkFilterEpsilon] for ε-closure (removes matches from result).
-//
-// # Patterns
-//
-//   - Tree Walker / Catamorphism: recursive fold over a JSON tree guided by trie.
-//   - NFA simulation: tracks multiple active states via trie + ε-transition.
-//   - ε-closure propagation: recursive descent matches at every depth.
-//   - Strategy pattern via bool: include/exclude selected once, never changes.
+package core
 
 import "fmt"
 
-// ---------------------------------------------------------------------------
-// Depth limit
-// ---------------------------------------------------------------------------
-
 // MaxDepth is the default maximum recursion depth the walker will traverse.
 // Applied automatically when [Limits].MaxDepth is nil (the zero-value default).
-//
-// Deeply nested JSON documents can cause stack exhaustion. This limit is
-// enforced by default to prevent such attacks. To disable it, set
-// [Limits].MaxDepth to Ptr(0) or use [NoLimits].
 const MaxDepth = 1000
 
 // DepthError is returned when the walker exceeds the configured maximum depth.
@@ -67,13 +16,6 @@ func (e *DepthError) Error() string {
 	return fmt.Sprintf("maximum JSON depth %d exceeded at depth %d", e.MaxDepth, e.Depth)
 }
 
-// ---------------------------------------------------------------------------
-// Walker
-// ---------------------------------------------------------------------------
-
-// walker traverses a JSON tree guided by a compiled trie, producing a pruned copy.
-// The `include` flag selects between include mode (keep only matched paths) and
-// exclude mode (remove matched paths, keep everything else).
 type walker struct {
 	include  bool
 	maxDepth int
@@ -83,7 +25,6 @@ func newWalker(mode Mode, maxDepth int) walker {
 	return walker{include: mode == ModeInclude, maxDepth: maxDepth}
 }
 
-// walk dispatches to the appropriate handler based on node type.
 func (w walker) walk(node any, trie *trieNode, depth int) (any, error) {
 	if trie == nil {
 		if w.include {
@@ -114,8 +55,6 @@ func (w walker) walk(node any, trie *trieNode, depth int) (any, error) {
 	}
 }
 
-// walkObject iterates over object keys, matches each against the trie inline,
-// resolves the result, and applies ε-closure propagation.
 func (w walker) walkObject(obj map[string]any, trie *trieNode, depth int) (any, error) {
 	eps := trie.epsilon
 	var result map[string]any
@@ -126,7 +65,6 @@ func (w walker) walkObject(obj map[string]any, trie *trieNode, depth int) (any, 
 	}
 
 	for key, val := range obj {
-		// Inline trie matching — no iterator closure, no trieMatch struct.
 		child := trie.match(key)
 		if eps != nil {
 			child = mergePair(child, eps.match(key))
@@ -137,7 +75,6 @@ func (w walker) walkObject(obj map[string]any, trie *trieNode, depth int) (any, 
 			return nil, err
 		}
 
-		// ε-closure propagation
 		if eps != nil {
 			if w.include {
 				found, ferr := w.walkSearchEpsilon(val, eps, depth+1)
@@ -164,8 +101,6 @@ func (w walker) walkObject(obj map[string]any, trie *trieNode, depth int) (any, 
 	return result, nil
 }
 
-// walkArray iterates over array elements, matches each index against the trie inline,
-// resolves the result, and applies ε-closure propagation.
 func (w walker) walkArray(arr []any, trie *trieNode, depth int) (any, error) {
 	eps := trie.epsilon
 	arrLen := len(arr)
@@ -185,7 +120,6 @@ func (w walker) walkArray(arr []any, trie *trieNode, depth int) (any, error) {
 			return nil, err
 		}
 
-		// ε-closure propagation
 		if eps != nil {
 			if w.include {
 				found, ferr := w.walkSearchEpsilon(val, eps, depth+1)
@@ -212,7 +146,6 @@ func (w walker) walkArray(arr []any, trie *trieNode, depth int) (any, error) {
 	return result, nil
 }
 
-// resolveMatch determines the value for a key/index based on the effective trie.
 func (w walker) resolveMatch(val any, child *trieNode, depth int) (any, error) {
 	if child == nil {
 		if w.include {
@@ -229,13 +162,6 @@ func (w walker) resolveMatch(val any, child *trieNode, depth int) (any, error) {
 	return w.walk(val, child, depth+1)
 }
 
-// ---------------------------------------------------------------------------
-// ε-closure propagation strategies
-// ---------------------------------------------------------------------------
-
-// walkSearchEpsilon recursively searches for ε-transition matches in the
-// original value and builds a partial result containing only matched paths.
-// Used by include mode. Analogous to regex findAll.
 func (w walker) walkSearchEpsilon(node any, epsTrie *trieNode, depth int) (any, error) {
 	if w.maxDepth > 0 && depth > w.maxDepth {
 		return nil, &DepthError{Depth: depth, MaxDepth: w.maxDepth}
@@ -255,7 +181,6 @@ func (w walker) walkSearchEpsilon(node any, epsTrie *trieNode, depth int) (any, 
 					result[key] = childResult
 				}
 			}
-			// Always continue ε-closure
 			epsResult, err := w.walkSearchEpsilon(val, epsTrie, depth+1)
 			if err != nil {
 				return nil, err
@@ -304,9 +229,6 @@ func (w walker) walkSearchEpsilon(node any, epsTrie *trieNode, depth int) (any, 
 	return nil, nil
 }
 
-// walkFilterEpsilon recursively walks an already-filtered result and removes
-// any additional matches found by the ε-transition trie at every level.
-// Used by exclude mode. Analogous to regex replaceAll.
 func (w walker) walkFilterEpsilon(node any, epsTrie *trieNode, depth int) (any, error) {
 	if w.maxDepth > 0 && depth > w.maxDepth {
 		return nil, &DepthError{Depth: depth, MaxDepth: w.maxDepth}
@@ -374,12 +296,6 @@ func (w walker) walkFilterEpsilon(node any, epsTrie *trieNode, depth int) (any, 
 	return node, nil
 }
 
-// ---------------------------------------------------------------------------
-// Merge utility
-// ---------------------------------------------------------------------------
-
-// mergeValues merges two values (used when include + ε-closure both produce results).
-// Neither argument is mutated; a new map is returned when both are objects.
 func mergeValues(a, b any) any {
 	if a == nil {
 		return b
@@ -405,6 +321,5 @@ func mergeValues(a, b any) any {
 		return merged
 	}
 
-	// For non-objects, prefer a (direct match over ε-transition)
 	return a
 }

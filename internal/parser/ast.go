@@ -30,4 +30,3 @@ type Path struct {
 	Segments []Segment
 	Raw      string
 }
-

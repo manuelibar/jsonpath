@@ -1,10 +1,10 @@
-package jsonpath
+package core
 
 import (
 	"errors"
 	"fmt"
 
-	"github.com/mibar/jsonpath/parser"
+	"github.com/mibar/jsonpath/internal/parser"
 )
 
 // Mode selects between include and exclude behaviour for a [Query].
